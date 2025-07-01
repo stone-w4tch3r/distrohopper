@@ -1,52 +1,98 @@
-# API reference
+# distrohopper User API Guide
 
-This document describes the **public API** exposed by `distrohopper`.  Everything else in the code-base is considered *private* and may change without notice.
+This guide covers the essential public API for declaring and applying your environment with distrohopper.
 
 ---
 
-## 1. Data model
+## Quick Start
 
-### 1.1 OS enum
+1. Install requirements and pyinfra:
+   ```sh
+   python -m venv .venv && source .venv/bin/activate
+   pip install -r requirements.txt
+   ```
+2. Write your environment file (see examples below).
+3. Run:
+   ```sh
+   pyinfra inventory.py your_file.py --apply
+   ```
+
+---
+
+## Main Concepts
+
+### App
+
+- The main unit. Represents an application to install, configure, and/or manage services for.
+- Usage:
+  ```python
+  App(Installation, Settings=None, Services=None)
+  ```
+  - `Installation`: how to install (see below)
+  - `Settings`: optional config file edits (list)
+  - `Services`: optional systemd services to manage (list)
+
+### Installation Types
+
+Choose one per app:
+
+| Type      | Platforms                      | Notes & Extras                             |
+| --------- | ------------------------------ | ------------------------------------------ |
+| `Apt`     | Ubuntu, Debian                 | Optionally add `AptRepo`, `AptPpa`         |
+| `Dnf`     | Fedora                         | Optionally add `DnfRepo`, `Copr`           |
+| `Snap`    | Ubuntu, Debian, Fedora (snapd) |                                            |
+| `Flatpak` | Any with flatpak               | Optionally add `FlatpakRepo`, set `remote` |
+| `Pacman`  | Arch, Manjaro                  |                                            |
+| `Zypper`  | openSUSE, SLE                  |                                            |
+| `str`     | any                            | Treated as native system package name      |
+
+#### Example
+
 ```python
-from common import OS
+Apt("firefox")
+Dnf("neovim", Copr("username/project"))
+Flatpak("org.gimp.GIMP", remote="flathub", FlatpakRepo("flathub", "https://dl.flathub.org/repo/flathub.flatpakrepo"))
 ```
-Represents the target distribution.  Currently supported:
-* `OS.ubuntu`
-* `OS.debian`
-* `OS.fedora`
 
-### 1.2 Installation methods
+### Config and Service Helpers
 
-Choose **one** of the following dataclasses per app:
+- `ConfigModification(path, ModifyAction, ConfigType)` – patch JSON/INI/XML/plist.
+- `PlainTextModification(ModifyAction)` – patch arbitrary text files.
+- `Service(name, enabled=True, started=True)` – ensure a systemd service is enabled/started.
 
-| Class | Distros | Parameters |
-|-------|---------|------------|
-| `Apt`  | Ubuntu, Debian | `PackageName`, `Version`, optional `RepoOrPpa` *(see below)* |
-| `Dnf`  | Fedora | `PackageName`, `Version` |
-| `Snap` | Ubuntu, Debian, Fedora (if snapd installed) | `PackageName`, `Version` |
-| `str`  | any | fallback – the string is treated as a *system package* name and installed with the native manager (`apt`/`dnf`/`pacman` once implemented) |
-
-`AptRepo` and `AptPpa` helpers describe additional repositories to enable before installing a package.
-
-### 1.3 Configuration changes
-
-After an app is installed you can **patch its config files**:
-
-* `ConfigModification(path, ModifyAction, ConfigType)` – for JSON, INI, XML, plist.  `ModifyAction` receives the config as a dict or list. You can use a lambda or helper function to mutate and return the config. For example: `lambda cfg: cfg.update({"foo": 42}) or cfg`.
-* `PlainTextModification(ModifyAction)` – for arbitrary text files; receives and must return a `str`.
-
-### 1.4 The `App` unit
 ```python
-App(Installation, Settings=None)
+App(Installation, Settings=None, Services=None)
 ```
-`Installation` – one of the install methods above.
-`Settings` – list of modifications that will be executed **in order** after the package is present.
+
+- `Installation` – one of the install methods above.
+- `Settings` – list of modifications that will be executed **in order** after the package is present.
+- `Services` – _(optional)_ list of `Service` abstractions to enable/start after install (see below).
+
+#### Service abstraction
+
+```python
+class Service:
+    def __init__(self, name: str, enabled: bool = True, started: bool = True, restarted: bool = False, user: str = None):
+        ...
+```
+
+- Maps to pyinfra: `server.service` (or future `service.unit`).
+- Idempotent: will only make changes if state differs.
+- Example usage:
+
+```python
+App(
+    Installation=Apt("openssh-server"),
+    Services=[Service("ssh", enabled=True, started=True)]
+)
+```
 
 ---
 
 ## 2. Using the API
 
 ### 2.1 Minimal example
+
 ```python
 from app import App, Apt
 from common import OS
@@ -59,11 +105,13 @@ app.handle(apps)  # generates pyinfra operations based on the current host
 ```
 
 Run with:
+
 ```
 pyinfra inventory.py your_file.py --apply
 ```
 
 ### 2.2 Multi-distro selection
+
 ```python
 from app import App, Apt, Dnf
 from common import OS
@@ -75,7 +123,32 @@ apps = [
 ]
 ```
 
-### 2.3 Adding a third-party repo and editing JSON config
+### 2.3 Flatpak and Service example
+
+```python
+from app import App, Flatpak, Service
+
+apps = [
+    App(
+        Installation=Flatpak("org.gimp.GIMP", remote="flathub"),
+        Services=[Service("gimp", enabled=True, started=True)]
+    )
+]
+```
+
+### 2.4 Pacman/Zypper example
+
+```python
+from app import App, Pacman, Zypper
+
+apps = [
+    App(Pacman("neovim")),
+    App(Zypper("htop")),
+]
+```
+
+### 2.5 Adding a third-party repo and editing JSON config
+
 ```python
 from app import App, Apt, AptRepo, ConfigModification
 
@@ -98,7 +171,8 @@ apps = [
 ]
 ```
 
-### 2.4 Plain-text patch
+### 2.6 Plain-text patch
+
 ```python
 from app import App, Snap, PlainTextModification
 
@@ -114,9 +188,10 @@ apps = [
 
 ---
 
-## 3. Advanced helpers
+## 3. Advanced helpers & extension
 
 ### 3.1 Editing dicts/lists in lambdas
+
 To edit a dict or list in a lambda, use plain Python operations. For example:
 
 ```python
@@ -147,6 +222,7 @@ ConfigModification(
 ```
 
 ### 3.2 Executing Python on the host
+
 ```python
 from lib import remote_python as rp
 
@@ -159,7 +235,22 @@ rp.execute_function(
     minimum_python_version="3.8",
 )
 ```
-*Non-idempotent* – will always run.
+
+_Non-idempotent_ – will always run.
+
+### 3.3 Extending with new install/service types
+
+- To add a new package manager, implement a new install class (see `Flatpak`, `Pacman`, etc above) and map to a pyinfra operation or custom shell command.
+- To add a new service abstraction, implement a `Service` subclass and map to `server.service` or a custom pyinfra operation.
+- To add new config file types, extend `lib.modify_file` with a new parser/patcher.
+- To add new host facts, implement a pyinfra Fact (see pyinfra docs for `FactBase`).
+
+### 3.4 Error handling, idempotency, dry-run
+
+- All install/config/service abstractions are idempotent and safe to re-run.
+- Non-idempotent actions (remote Python, etc) are explicitly flagged.
+- Unsupported OS/manager combinations raise a clear error at runtime.
+- All operations respect pyinfra’s dry-run mode (`--dry-run`).
 
 ---
 
@@ -168,9 +259,11 @@ rp.execute_function(
 ```
 common.OS, common.URL
 
-app.Apt, app.Dnf, app.Snap, app.AptRepo, app.AptPpa
+app.Apt, app.Dnf, app.Snap, app.Flatpak, app.Pacman, app.Zypper,
+app.AptRepo, app.AptPpa
 app.StructuredConfigType, app.ConfigModification, app.PlainTextModification
 app.App, app.handle
+abstractions.Service
 
 lib.modify_file.{modify_config_fluent, modify_structured_config, modify_plaintext_file}
 lib.remote_python.{execute_string, execute_file, execute_function}
@@ -180,4 +273,13 @@ Everything else is private.
 
 ---
 
-_End of document_
+## 5. Changelog & roadmap
+
+- [x] Multi-OS package install (Apt, Dnf, Snap, generic)
+- [x] Structured/plain config patching
+- [x] Remote Python execution
+- [ ] Flatpak, Pacman, Zypper install
+- [ ] Service abstraction
+- [ ] Custom facts for snapd/flatpak detection
+- [ ] YAML/TOML config support
+- [ ] User/file abstractions
