@@ -16,168 +16,8 @@ from pyinfra.facts import files as files_fact, server
 from pyinfra.operations import files
 
 
-class DictWrapper:
-    """
-    A wrapper that allows modification withing lambda.
-    Python is, so to speak, a "simple and convenient" language, so some tricky workarounds are required to work with lambda functions.
-
-    Usage:
-    ```
-    dct = { "cars": { "car0": "Toyota", "car1": "BMW", } }
-    modified_dct = DictWrapper(dct)["cars"]["car0"].set("Mercedes")
-    modified_dct = DictWrapper(dct)["cars"]["car1"].remove()
-    modified_dct = DictWrapper(dct)["numbers"].set([1, 2, 3])
-    modified_dct = DictWrapper(dct)["numbers"].append(4)
-    ```
-
-    Usage with chained operations:
-    ```
-    dct = { "cars": { "car0": "Toyota", "car1": "BMW", } }
-    modified_dct = DictWrapper(dct).modify_chained([
-        lambda x: x["cars"]["car0"].set("Mercedes"),
-        lambda x: x["cars"]["car1"].set("Audi"),
-    ])
-    """
-    _node: dict
-    _key: str
-    _root: dict
-
-    def __init__(self, node: dict, key: str = None, root: dict = None):
-        self._node = node
-        self._key = key
-        self._root = root
-
-    def __getitem__(self, key: str):
-        if self._root is None:
-            return DictWrapper(self._node, key, self._node)
-        return DictWrapper(self._node[self._key], key, self._root)
-
-    def set(self, value: Any) -> dict:
-        """
-        Equal to `dct[key] = value`.
-        """
-        self._node[self._key] = value
-        return self._root or self._node
-
-    def append(self, value: Any) -> dict:
-        """
-        Equal to `dct[key].append(value)`.
-        """
-        self._node[self._key].append(value)
-        return self._root or self._node
-
-    def remove(self) -> dict:
-        """
-        Equal to `dct.pop(key)`.
-        """
-        self._node.pop(self._key)
-        return self._root or self._node
-
-    def modify_chained(self, list_of_operations: list[Callable[["DictWrapper"], dict]]) -> dict:
-        """
-        Chained dictionary modifications.
-
-        Usage:
-        ```
-        dct = { "cars": { "car0": "Toyota", "car1": "BMW", } }
-        modified_dct = DictWrapper(dct).modify_chained([
-            lambda x: x["cars"]["car0"].set("Mercedes"),
-            lambda x: x["cars"]["car1"].set("Audi"),
-        ])
-        ```
-        """
-        dct = self._root if self._root is not None else self._node
-        for o in list_of_operations:
-            dct = o(DictWrapper(dct))
-            if not isinstance(dct, dict):
-                raise OperationError(f"Chained operations must return a dictionary, got {type(dct)} from {inspect.getsource(o).lstrip()}")
-        return dct
-
-    @property
-    def dct(self) -> dict:
-        return self._root or self._node
-
-
-class ListWrapper:
-    """
-    A wrapper that allows modification withing lambda.
-    Python is, so to speak, a "simple and convenient" language, so some tricky workarounds are required to work with lambda functions.
-
-    Usage:
-    ```
-    lst = [1, 2, 3]
-    modified_lst = ListWrapper(lst).append(4)
-    modified_lst = ListWrapper(lst)[0].set(5)
-    modified_lst = ListWrapper(lst).remove(0)
-    ```
-
-    Usage with chained operations:
-    ```
-    lst = [1, 2, 3]
-    modified_lst = ListWrapper(lst).modify_chained([
-        lambda x: x.append(4),
-        lambda x: x[0].set(5),
-    ])
-    """
-
-    class _ListElementWrapper:
-        def __init__(self, lst: list, index: int, root: list):
-            self._lst = lst
-            self._index = index
-            self._root = root
-
-        def set(self, value: Any) -> list:
-            """
-            Equal to `lst[index] = value`.
-            """
-            self._lst[self._index] = value
-            return self._root
-
-    def __init__(self, lst: list):
-        self.lst = lst
-
-    def __getitem__(self, index):
-        if isinstance(index, slice):
-            raise ValueError("Slicing is not supported. Use lst property to get the inner list.")
-        else:
-            return ListWrapper._ListElementWrapper(self.lst, index, self.lst)
-
-    def remove(self, index: int) -> list:
-        """
-        Equal to `lst.pop(index)`.
-        """
-        self.lst.pop(index)
-        return self.lst
-
-    def append(self, value: Any) -> list:
-        """
-        Equal to `lst.append(value)`.
-        """
-        self.lst.append(value)
-        return self.lst
-
-    def modify_chained(self, list_of_operations: list[Callable[["ListWrapper"], list]]) -> list:
-        """
-        Chained list modifications.
-
-        Usage:
-        ```
-        lst = [1, 2, 3]
-        modified_lst = ListWrapper(lst).modify_chained([
-            lambda x: x.append(4),
-            lambda x: x[0].set(5),
-        ])
-        ```
-        """
-        lst = self.lst
-        for o in list_of_operations:
-            lst = o(ListWrapper(lst))
-            if not isinstance(lst, list):
-                raise OperationError(f"Chained operations must return a list, got {type(lst)} from {inspect.getsource(o).lstrip()}")
-        return lst
-
-
 _T = TypeVar("_T")
+
 
 
 def _deserialize(content: str, deserializer: Callable[[str], _T]) -> _T:
@@ -247,7 +87,7 @@ TSerialize = TypeVar("TSerialize")
 @operation()
 def modify_config_fluent(
     path: str,
-    modify_action: Callable[[DictWrapper | ListWrapper | TDeserialized], dict | list],
+    modify_action: Callable[[TDeserialized], dict | list],
     config_type: ConfigType | None = ConfigType.JSON,
     custom_deserializer: Callable[[str], TDeserialized] = None,
     custom_serializer: Callable[[TDeserialized], str] = None,
@@ -256,7 +96,7 @@ def modify_config_fluent(
 ):
     """
     Modify a structured config file on the remote host.
-    DictWrapper and ListWrapper are provided to allow quick in-place modifications within lambda functions.
+    The provided `modify_action` receives deserialized data (dict or list) and must return the modified data.
     Config file would be loaded from the remote host, modified, and then uploaded back to the remote host.
 
     @note If the config file is too large, this operation will be slow.
@@ -274,17 +114,20 @@ def modify_config_fluent(
     ```
     structured_config.modify_config_fluent(
         path="/file.json",
-        modify_action=lambda cfg: cfg["cars"]["car0"].set("Mercedes"),
+        def my_edit(cfg):
+            cfg["cars"]["car0"] = "Mercedes"
+            return cfg
+        modify_action=my_edit,
     )
     ```
 
-    Usage with chained operations:
+    Example of more complex modifications:
     ```
     structured_config.modify_config_fluent(
         path="/file.json",
         modify_action=lambda cfg: cfg.modify_chained([
-            lambda x: x["cars"]["car0"].set("Mercedes"),
-            lambda x: x["cars"]["car1"].set("Audi"),
+            cfg["cars"]["car0"] = "Mercedes"
+            cfg["cars"]["car1"] = "Audi"
         ])
     )
     ```
@@ -308,7 +151,7 @@ def modify_config_fluent(
     if config_type is not None:
         yield from modify_structured_config._inner(
             path=path,
-            modify_action=lambda cfg: modify_action(DictWrapper(cfg) if isinstance(cfg, dict) else ListWrapper(cfg)),
+            modify_action=modify_action,
             config_type=config_type,
             backup=backup,
             max_file_size_mb=max_file_size_mb,
