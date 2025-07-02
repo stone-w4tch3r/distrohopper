@@ -8,12 +8,13 @@ This document is aimed at **contributors/maintainers**. It explains how the high
 
 ```
 apps_example.py (or user script)
-        ↓ calls
-app.handle([...])            # file app.py
-        ↓ resolves current OS via server.LinuxDistribution fact
-        ↓ sorts App objects into buckets (Apt/Dnf/Snap/str)
-        ↓ generates idempotent operations
-        ↓ executes through pyinfra runtime
+        ↓
+App({...})  # each App enqueues pyinfra operations immediately
+        ↓ detects current OS via server.LinuxDistribution fact in App constructor
+        ↓ generates idempotent operations for the detected OS
+        ↓ executes pyinfra operations
+
+# You can freely mix App() and raw pyinfra operations in any order
 ```
 
 pyinfra itself takes care of _connection_, _state_ and _parallelism_. Our responsibility is reduced to composing the correct sequence of **facts / operations**.

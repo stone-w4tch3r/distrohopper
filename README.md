@@ -2,7 +2,7 @@
 
 Declarative, cross-distro OS bootstrapper for people who like to hop between Linux distributions but keep the same working environment.
 
-* Write **one Python file** that lists the apps you need and how their config files must look after the run.
+* Write **one Python file** that lists the apps you need and how their config files must look after the run. You can mix `App()` calls with raw pyinfra operations.
 * Run `pyinfra` against any supported host (Ubuntu, Debian, Fedora; more coming) – packages are installed, PPAs/repos are added, dot-files are patched, even arbitrary Python code can be executed remotely.
 
 The project is a thin, opinionated wrapper around [pyinfra](https://pyinfra.dev) that provides:
@@ -27,7 +27,30 @@ pyinfra @local apps_example.py  # dry-run
 pyinfra @local apps_example.py --apply  # apply changes
 ```
 
-See `apps_example.py` for a self-documented example.
+### Minimal Example
+
+```python
+from app import App
+from installation.apt import Apt
+from installation.dnf import Dnf
+from common import OS
+from pyinfra.operations import server
+
+App({
+    OS.ubuntu: Apt("firefox"),
+    OS.debian: Apt("firefox"),
+    OS.fedora: Dnf("firefox")
+})
+
+# You can mix App() with raw pyinfra operations
+server.user("myuser", home="/home/myuser")
+
+App({
+    OS.ubuntu: "neofetch",
+    OS.debian: "neofetch",
+    OS.fedora: "neofetch"
+})
+```
 
 ---
 

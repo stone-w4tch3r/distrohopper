@@ -1,0 +1,8 @@
+- [ ] What if we need to wait for the app to be installed before applying settings?
+- [ ] OS.any
+- [ ] pyinfra: rpm copr facts and operations
+- [ ] rpm copr and repo
+- [ ] pacman
+- [ ] zypper
+- [ ] pyinfra: flatpak facts and operations
+- [ ] flatpak and repo

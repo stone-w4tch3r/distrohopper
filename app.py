@@ -17,78 +17,90 @@ from configuration.config_edit import ConfigEdit
 from configuration.txt_edit import TxtEdit
 
 
-@dataclass(frozen=True)
 class App(_IUnit):
-    Installation: Apt | Dnf | Snap | str
-    Settings: list[ConfigEdit | TxtEdit] | None = None
+    def __init__(self, Installation: dict[OS, Apt | Dnf | Snap | str], Settings: list[ConfigEdit | TxtEdit] | None = None):
+        self.Installation_by_os = Installation
+        self.Settings = Settings
+
+        # Detect current OS
+        distro_name = host.get_fact(server_facts.LinuxDistribution)['name']
+        if distro_name == 'Ubuntu':
+            self.os = OS.ubuntu
+        elif distro_name == 'Debian':
+            self.os = OS.debian
+        elif distro_name == 'Fedora':
+            self.os = OS.fedora
+        else:
+            raise Exception('Unsupported OS')
+
+        # Select installation for this OS
+        if self.os not in self.Installation_by_os:
+            raise Exception(f'No installation specified for OS {self.os}')
+        self.Installation = self.Installation_by_os[self.os]
+
+        # Provision immediately
+        self._provision()
 
     @property
     def name(self) -> str:
-        # If Installation is str, return it; otherwise, use .name
         return self.Installation if isinstance(self.Installation, str) else self.Installation.name
 
+    def _provision(self):
+        inst = self.Installation
+        # Apt
+        if isinstance(inst, Apt):
+            if inst.RepoOrPpa:
+                if isinstance(inst.RepoOrPpa, AptPpa):
+                    apt.ppa(src=inst.RepoOrPpa.PpaStr, _sudo=True)
+                    apt.update()
+                elif isinstance(inst.RepoOrPpa, AptRepo):
+                    apt.key(src=inst.RepoOrPpa.KeyUrl, _sudo=True)
+                    apt.repo(src=inst.RepoOrPpa.RepoSourceStr, filename=inst.name, _sudo=True)
+                    apt.update()
+            apt.packages(
+                packages=[inst.PackageName],
+                cache_time=86400,
+                update=True,
+                _sudo=True
+            )
+        # Dnf
+        elif isinstance(inst, Dnf):
+            dnf.packages(
+                packages=[inst.PackageName],
+                _sudo=True
+            )
+        # Snap
+        elif isinstance(inst, Snap):
+            snap.package(
+                packages=[inst.PackageName],
+                _sudo=True
+            )
+        # String (generic package)
+        elif isinstance(inst, str):
+            server.packages(
+                packages=[inst],
+                _sudo=True
+            )
+        else:
+            raise Exception(f'Unknown installation type: {type(inst)}')
 
-def handle(apps: list[App]):
-    apt_packages = [app.Installation for app in apps if isinstance(app.Installation, Apt)]
-    dnf_packages = [app.Installation for app in apps if isinstance(app.Installation, Dnf)]
-    snap_packages = [app.Installation for app in apps if isinstance(app.Installation, Snap)]
-    str_packages = [app.Installation for app in apps if isinstance(app.Installation, str)]
-    app_settings = [s for app in apps for s in app.Settings]
-    config_edits = [s for s in app_settings if isinstance(s, ConfigEdit)]
-    txt_edits = [s for s in app_settings if isinstance(s, TxtEdit)]
+        # Apply settings
+        # TODO: what if we need to wait for the app to be installed before applying settings?
+        if self.Settings:
+            for s in self.Settings:
+                if isinstance(s, ConfigEdit):
+                    modify_file.modify_config_fluent(
+                        path=str(s.Path),
+                        modify_action=s.EditAction,
+                        config_type=modify_file.ConfigType[s.ConfigType.name.upper()]
+                    )
+                elif isinstance(s, TxtEdit):
+                    modify_file.modify_config_fluent(
+                        path=str(s.Path),
+                        modify_action=s.EditAction,
+                        config_type=modify_file.ConfigType['TXT']
+                    )
+                else:
+                    raise Exception(f'Unknown setting type: {type(s)}')
 
-    distro: OS
-    match host.get_fact(server_facts.LinuxDistribution)['name']:
-        case 'Ubuntu':
-            distro = OS.ubuntu
-        case 'Debian':
-            distro = OS.debian
-        case 'Fedora':
-            distro = OS.fedora
-        case _:
-            raise Exception('Unsupported OS')
 
-    # todo: improve this check
-    assert all([distro in package.os for package in apt_packages + dnf_packages + snap_packages]), 'OS mismatch'
-
-    for ppa in [package.RepoOrPpa.PpaStr for package in apt_packages if isinstance(package.RepoOrPpa, AptPpa)]:
-        # todo: apt.ppa is not idempotent, check if ppa is already added
-        apt.ppa(src=ppa, _sudo=True)
-        apt.update()
-    for key, repo, pkg_name in [
-        (package.RepoOrPpa.Key.url_str, package.RepoOrPpa.RepoSourceStr, package.name)
-        for package in apt_packages
-        if isinstance(package.RepoOrPpa, AptRepo)
-    ]:
-        apt.key(src=key, _sudo=True)
-        apt.repo(src=repo, filename=pkg_name, _sudo=True)
-        apt.update()  #todo: not dynamic!
-    apt.packages(
-        packages=[apt_package.PackageName for apt_package in apt_packages],
-        cache_time=86400,
-        update=True,
-        _sudo=True
-    )
-
-    dnf.packages(
-        packages=[dnf_package.PackageName for dnf_package in dnf_packages],
-        _sudo=True
-        # update=True,
-    )
-
-    snap.package(
-        packages=[snap_package.PackageName for snap_package in snap_packages],
-        _sudo=True
-    )
-
-    server.packages(
-        packages=str_packages,
-        _sudo=True
-    )
-
-    for c in config_edits:
-        modify_file.modify_config_fluent(
-            path=str(c.Path),
-            modify_action=c.EditAction,
-            config_type=modify_file.ConfigType[c.ConfigType.name.upper()]
-        )

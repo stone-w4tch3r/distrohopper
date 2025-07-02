@@ -26,11 +26,12 @@ This guide covers the essential public API for declaring and applying your envir
 - The main unit. Represents an application to install, configure, and/or manage services for.
 - Usage:
   ```python
-  App(Installation, Settings=None, Services=None)
+  App({OS.ubuntu: Apt(...), OS.fedora: Dnf(...), ...}, Settings=None)
   ```
-  - `Installation`: how to install (see below)
+  - First argument: a dict mapping OS to Installation (see below)
   - `Settings`: optional config file edits (list)
-  - `Services`: optional systemd services to manage (list)
+
+  - You can freely mix `App()` calls with raw pyinfra operations in any order.
 
 ### Installation Types
 
@@ -94,10 +95,27 @@ App(
 ### 2.1 Minimal example
 
 ```python
-from app import App, Apt
+from app import App
+from installation.apt import Apt
+from installation.dnf import Dnf
 from common import OS
+from pyinfra.operations import server
 
-apps = [
+App({
+    OS.ubuntu: Apt("firefox"),
+    OS.debian: Apt("firefox"),
+    OS.fedora: Dnf("firefox")
+})
+
+# You can mix App() with raw pyinfra operations
+server.user("myuser", home="/home/myuser")
+
+App({
+    OS.ubuntu: "neofetch",
+    OS.debian: "neofetch",
+    OS.fedora: "neofetch"
+})
+"""
     App(Apt("neofetch")),
 ]
 
