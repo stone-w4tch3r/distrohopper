@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 from common import OS, URL
+from installation.abstract import Installation
 
 @dataclass(frozen=True)
 class AptRepo:
@@ -17,13 +18,15 @@ class AptPpa:
     """ppa formatted string, e.g. `ppa:mozillateam/ppa`"""
 
 @dataclass(frozen=True)
-class Apt:
+class Apt(Installation):
     PackageName: str
     RepoOrPpa: AptRepo | AptPpa | None = None
     Version: str | None = None
 
     @property
-    def os(self) -> list[OS]: return [OS.ubuntu, OS.debian]
+    def os(self) -> list[OS]:
+        return [OS.ubuntu, OS.debian]
 
     @property
-    def name(self) -> str: return self.PackageName
+    def name(self) -> str:
+        return self.PackageName

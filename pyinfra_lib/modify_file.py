@@ -83,90 +83,6 @@ class ConfigType(Enum):
 TDeserialized = TypeVar("TDeserialized")
 TSerialize = TypeVar("TSerialize")
 
-
-@operation()
-def modify_config_fluent(
-    path: str,
-    modify_action: Callable[[TDeserialized], dict | list],
-    config_type: ConfigType | None = ConfigType.JSON,
-    custom_deserializer: Callable[[str], TDeserialized] = None,
-    custom_serializer: Callable[[TDeserialized], str] = None,
-    backup: bool = False,
-    max_file_size_mb: int = 2,
-):
-    """
-    Modify a structured config file on the remote host.
-    The provided `modify_action` receives deserialized data (dict or list) and must return the modified data.
-    Config file would be loaded from the remote host, modified, and then uploaded back to the remote host.
-
-    @note If the config file is too large, this operation will be slow.
-    @note If config_type is provided, custom_deserializer and custom_serializer are ignored.
-
-    @param path: The path to the config file.
-    @param modify_action: A function that modifies config and returns modified value.
-    @param config_type: The type of the config file.
-    @param custom_deserializer: A function that deserializes the config file content.
-    @param custom_serializer: A function that serializes the config to a string.
-    @param backup: Whether to create a backup of the config file before modifying it.
-    @param max_file_size_mb: Max allowed size of the config file in MB.
-
-    Usage:
-    ```
-    structured_config.modify_config_fluent(
-        path="/file.json",
-        def my_edit(cfg):
-            cfg["cars"]["car0"] = "Mercedes"
-            return cfg
-        modify_action=my_edit,
-    )
-    ```
-
-    Example of more complex modifications:
-    ```
-    structured_config.modify_config_fluent(
-        path="/file.json",
-        modify_action=lambda cfg: cfg.modify_chained([
-            cfg["cars"]["car0"] = "Mercedes"
-            cfg["cars"]["car1"] = "Audi"
-        ])
-    )
-    ```
-
-    Usage with custom deserializer and serializer:
-    ```
-    import yaml
-    structured_config.modify_config_fluent(
-        path="/file.yaml",
-        modify_action=lambda cfg: cfg["cars"]["car0"].set("Mercedes"),
-        custom_deserializer=lambda content: yaml.safe_load(content),
-        custom_serializer=lambda cfg: yaml.dump(cfg),
-    )
-    ```
-    """
-    if config_type is None and (custom_deserializer is None or custom_serializer is None):
-        raise OperationValueError("Either provide both custom deserializer and serializer or use config_type")
-    if config_type is not None and (custom_deserializer is not None or custom_serializer is not None):
-        logger.warning("When using config_type, custom deserializer and serializer are ignored")
-
-    if config_type is not None:
-        yield from modify_structured_config._inner(
-            path=path,
-            modify_action=modify_action,
-            config_type=config_type,
-            backup=backup,
-            max_file_size_mb=max_file_size_mb,
-        )
-    else:
-        yield from modify_custom_config._inner(
-            path=path,
-            modify_action=lambda cfg: modify_action(custom_deserializer(cfg) if isinstance(cfg, str) else cfg),
-            deserializer=custom_deserializer,
-            serializer=custom_serializer,
-            backup=backup,
-            max_file_size_mb=max_file_size_mb,
-        )
-
-
 @operation()
 def modify_structured_config(
     path: str,
@@ -192,7 +108,7 @@ def modify_structured_config(
         cfg["cars"]["car0"] = "Mercedes"
         return cfg
 
-    structured_config.modify_config(
+    structured_config.modify_structured_config(
         path="/file.json",
         modify_action=modify_dict,
     )

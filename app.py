@@ -1,5 +1,4 @@
 from abc import abstractmethod
-from dataclasses import dataclass
 from enum import Enum, auto
 from pathlib import Path
 from typing import Callable
@@ -17,7 +16,7 @@ from configuration.config_edit import ConfigEdit
 from configuration.txt_edit import TxtEdit
 
 
-class App(_IUnit):
+class App:
     def __init__(self, Installation: dict[OS, Apt | Dnf | Snap | str], Settings: list[ConfigEdit | TxtEdit] | None = None):
         self.Installation_by_os = Installation
         self.Settings = Settings
@@ -41,9 +40,6 @@ class App(_IUnit):
         # Provision immediately
         self._provision()
 
-    @property
-    def name(self) -> str:
-        return self.Installation if isinstance(self.Installation, str) else self.Installation.name
 
     def _provision(self):
         inst = self.Installation
@@ -89,16 +85,15 @@ class App(_IUnit):
         if self.Settings:
             for s in self.Settings:
                 if isinstance(s, ConfigEdit):
-                    modify_file.modify_config_fluent(
+                    modify_file.modify_structured_config(
                         path=str(s.Path),
                         modify_action=s.EditAction,
                         config_type=modify_file.ConfigType[s.ConfigType.name.upper()]
                     )
                 elif isinstance(s, TxtEdit):
-                    modify_file.modify_config_fluent(
+                    modify_file.modify_plaintext_file(
                         path=str(s.Path),
                         modify_action=s.EditAction,
-                        config_type=modify_file.ConfigType['TXT']
                     )
                 else:
                     raise Exception(f'Unknown setting type: {type(s)}')

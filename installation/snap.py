@@ -1,13 +1,16 @@
 from dataclasses import dataclass
 from common import OS
+from installation.abstract import Installation
 
 @dataclass(frozen=True)
-class Snap:
+class Snap(Installation):
     PackageName: str
     Version: str | None = None
 
     @property
-    def os(self) -> list[OS]: return [OS.ubuntu, OS.debian, OS.fedora]
+    def os(self) -> list[OS]:
+        return [OS.ubuntu, OS.debian, OS.fedora]
 
     @property
-    def name(self) -> str: return self.PackageName
+    def name(self) -> str:
+        return self.PackageName
