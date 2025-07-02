@@ -166,7 +166,7 @@ distrohopper/
 ├── common.py
 ├── units.py               # internal interfaces
 │
-├── lib/                   # implementation helpers (private)
+├── pyinfra_lib/           # pyinfra operations/facts/helpers
 │   ├── __init__.py
 │   ├── modify_file.py
 │   ├── remote_python.py
