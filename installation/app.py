@@ -8,12 +8,9 @@ from pyinfra.facts import server as server_facts
 from pyinfra.operations import apt, dnf, snap, server, python
 
 from common import OS
-from lib import modify_file
-from units import _IUnit
-from abstractions.install import Apt, Dnf, Snap, AptRepo, AptPpa
-
-from configuration.config_edit import ConfigEdit
-from configuration.txt_edit import TxtEdit
+from pyinfra_lib import modify_file
+from installation import Apt, Dnf, Snap, AptRepo, AptPpa
+from configuration import ConfigEdit, TxtEdit
 
 
 class App:
