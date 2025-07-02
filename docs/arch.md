@@ -41,10 +41,9 @@ pyinfra itself takes care of _connection_, _state_ and _parallelism_. Our respon
 **Planned extensions:**
 
 - `Flatpak`, `Pacman`, `Zypper` install classes (see above).
-- `Service` abstraction – declarative systemd (see below).
 - Richer inventory: allow user-provided OS mapping, not just auto-detect.
 - More config file types: YAML, TOML, etc.
-- User/service/file abstractions as separate modules.
+- Custom facts for snapd/flatpak detection.
 
 ---
 
@@ -62,25 +61,11 @@ pyinfra itself takes care of _connection_, _state_ and _parallelism_. Our respon
 ### Extension Points
 
 - **Adding a new package manager**: Implement a new install class (e.g., `Flatpak`, `Pacman`, `Zypper`) and map to pyinfra operation or custom shell as needed. Register in the main bucketing logic in `app.handle`.
-- **Adding a Service abstraction**: Implement a `Service` class that wraps pyinfra’s `server.service` or a custom `service.unit` operation. Should support `enabled`, `started`, `restarted`, etc.
 - **Adding config file types**: Extend `lib.modify_file` to support new formats (YAML, TOML, etc) using the same idempotent patching logic.
 - **Adding new facts**: Write a custom pyinfra fact (see pyinfra’s `FactBase`), use for detection (e.g., `snapd`, `flatpak` availability).
 
 ---
 
-### Example: Service Abstraction
-
-```python
-# Planned API
-Service(
-    name="ssh",
-    enabled=True,
-    started=True,
-    restarted=False,
-    user=None,  # optional
-)
-# Maps to pyinfra: server.service(...)
-```
 
 ### Example: Flatpak Install
 
@@ -124,7 +109,6 @@ Pacman(
 - [ ] Service abstraction
 - [ ] Custom facts for snapd/flatpak detection
 - [ ] YAML/TOML config support
-- [ ] User/file abstractions
 
 ---
 
@@ -157,11 +141,11 @@ Besides the stock pyinfra facts/operations we still miss:
 
 ---
 
-## 5. Directory / package layout (desired)
+## 5. Directory / package layout (current)
 
 ```
 distrohopper/
-├── app.py                 # public API entry
+├── app.py                 # public API entry & orchestration
 ├── apps_example.py        # examples / e2e tests
 ├── common.py
 ├── units.py               # internal interfaces
@@ -172,27 +156,33 @@ distrohopper/
 │   ├── remote_python.py
 │   ├── remote_python_fact.py
 │   ├── remote_python_util.py
-│   └── tests.py
 │
-├── abstractions/          # new: top-level abstractions (Service, File, User, etc)
-│   ├── service.py
-│   ├── file.py
-│   ├── user.py
-│   └── ...
+├── installation/          # install method abstractions (Apt, Dnf, Snap, ...)
+│   ├── __init__.py
+│   ├── apt.py
+│   ├── dnf.py
+│   └── snap.py
+│
+├── configuration/         # config edit abstractions (ConfigEdit, TxtEdit, ...)
+│   ├── config_edit.py
+│   └── txt_edit.py
 │
 ├── docs/
 │   ├── api.md
 │   └── arch.md
 │
-├── tests/                 # future pytest unit tests
-│   └── ...
+├── tests/
+│   └── .gitkeep
 │
 ├── requirements.txt
 ├── README.md
 └── LICENSE (to be added)
 ```
 
-When new top-level abstractions appear (e.g. `Service`, `File`, `User`, `Flatpak`, `Pacman`), they should live in their own modules under `abstractions/` to keep `app.py` focused on application installation and orchestration.
+- Install logic is modularized under `installation/` (e.g., `Apt`, `Dnf`, `Snap`).
+- Configuration edit logic is modularized under `configuration/` (e.g., `ConfigEdit`, `TxtEdit`).
+- File, service, and user management use pyinfra built-in operations directly; no custom abstractions are planned for these.
+- `app.py` focuses on orchestration and mapping high-level API to pyinfra operations.
 
 ---
 

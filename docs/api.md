@@ -259,14 +259,12 @@ _Non-idempotent_ – will always run.
 ```
 common.OS, common.URL
 
-app.Apt, app.Dnf, app.Snap, app.Flatpak, app.Pacman, app.Zypper,
-app.AptRepo, app.AptPpa
-app.StructuredConfigType, app.ConfigModification, app.PlainTextModification
+installation.Apt, installation.Dnf, installation.Snap, installation.AptRepo, installation.AptPpa
+configuration.ConfigEdit, configuration.TxtEdit, configuration.StructuredConfigType
 app.App, app.handle
-abstractions.Service
 
-lib.modify_file.{modify_config_fluent, modify_structured_config, modify_plaintext_file}
-lib.remote_python.{execute_string, execute_file, execute_function}
+pyinfra_lib.modify_file.{modify_config_fluent, modify_structured_config, modify_plaintext_file}
+pyinfra_lib.remote_python.{execute_string, execute_file, execute_function}
 ```
 
 Everything else is private.

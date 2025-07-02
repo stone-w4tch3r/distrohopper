@@ -8,113 +8,24 @@ from pyinfra import host
 from pyinfra.facts import server as server_facts
 from pyinfra.operations import apt, dnf, snap, server, python
 
-from common import URL, OS
+from common import OS
 from lib import modify_file
 from units import _IUnit
+from abstractions.install import Apt, Dnf, Snap, AptRepo, AptPpa
 
-
-# region INTERNAL
-
-class _IInstallMethod:
-
-    @property
-    @abstractmethod
-    def os(self) -> list[OS]:
-        pass
-
-    @property
-    @abstractmethod
-    def name(self) -> str:
-        pass
-
-
-# endregion
-
-
-# region PUBLIC
-
-@dataclass(frozen=True)
-class AptRepo:
-    KeyUrl: str
-    RepoSourceStr: str
-    """apt source string, e.g. `deb https://download.virtualbox.org/virtualbox/debian bionic contrib`"""
-
-    def __post_init__(self):
-        if not URL.is_valid(self.KeyUrl):
-            raise ValueError(f"Invalid URL [{self.KeyUrl}]")
-
-
-@dataclass(frozen=True)
-class AptPpa:
-    PpaStr: str
-    """ppa formatted string, e.g. `ppa:mozillateam/ppa`"""
-
-
-@dataclass(frozen=True)
-class Apt(_IInstallMethod):
-    PackageName: str
-    RepoOrPpa: AptRepo | AptPpa | None = None
-    Version: str | None = None
-
-    @property
-    def os(self) -> list[OS]: return [OS.ubuntu, OS.debian]
-
-    @property
-    def name(self) -> str: return self.PackageName
-
-
-@dataclass(frozen=True)
-class Dnf(_IInstallMethod):
-    PackageName: str
-    Version: str | None = None
-
-    @property
-    def os(self) -> list[OS]: return [OS.fedora]
-
-    @property
-    def name(self) -> str: return self.PackageName
-
-
-@dataclass(frozen=True)
-class Snap(_IInstallMethod):
-    PackageName: str
-    Version: str | None = None
-
-    @property
-    def os(self) -> list[OS]: return [OS.ubuntu, OS.debian, OS.fedora]
-
-    @property
-    def name(self) -> str: return self.PackageName
-
-
-class StructuredConfigType(Enum):
-    JSON = auto()
-    YAML = auto()
-    INI = auto()
-
-
-@dataclass(frozen=True)
-class ConfigModification:
-    Path: str
-    ModifyAction: Callable[[dict | list], dict | list]
-    ConfigType: StructuredConfigType = StructuredConfigType.JSON
-
-
-@dataclass(frozen=True)
-class PlainTextModification:
-    ModifyAction: Callable[[str], str]
+from configuration.config_edit import ConfigEdit
+from configuration.txt_edit import TxtEdit
 
 
 @dataclass(frozen=True)
 class App(_IUnit):
-    Installation: _IInstallMethod | str
-    Settings: list[ConfigModification | PlainTextModification] | None = None
+    Installation: Apt | Dnf | Snap | str
+    Settings: list[ConfigEdit | TxtEdit] | None = None
 
     @property
-    def name(self) -> str: return self.Installation.name
-
-
-# endregion
+    def name(self) -> str:
+        # If Installation is str, return it; otherwise, use .name
+        return self.Installation if isinstance(self.Installation, str) else self.Installation.name
 
 
 def handle(apps: list[App]):
@@ -123,7 +34,8 @@ def handle(apps: list[App]):
     snap_packages = [app.Installation for app in apps if isinstance(app.Installation, Snap)]
     str_packages = [app.Installation for app in apps if isinstance(app.Installation, str)]
     app_settings = [s for app in apps for s in app.Settings]
-    config_modifications = [s for s in app_settings if isinstance(s, ConfigModification)]
+    config_edits = [s for s in app_settings if isinstance(s, ConfigEdit)]
+    txt_edits = [s for s in app_settings if isinstance(s, TxtEdit)]
 
     distro: OS
     match host.get_fact(server_facts.LinuxDistribution)['name']:
@@ -174,9 +86,9 @@ def handle(apps: list[App]):
         _sudo=True
     )
 
-    for c in config_modifications:
+    for c in config_edits:
         modify_file.modify_config_fluent(
             path=str(c.Path),
-            modify_action=c.ModifyAction,
+            modify_action=c.EditAction,
             config_type=modify_file.ConfigType[c.ConfigType.name.upper()]
         )
